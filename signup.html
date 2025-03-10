@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <!-- レスポンシブデザイン対応 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新規ユーザー登録</title>
+    <!-- CSSファイルの読み込み -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- メインコンテナ -->
+    <div class="container">
+        <!-- ページタイトル -->
+        <h2>新規ユーザー登録</h2>
+        <!-- 登録フォーム -->
+        <form id="signupForm">
+            <!-- ユーザー名入力欄 -->
+            <div class="form-group">
+                <label for="username">ユーザー名:</label>
+                <input type="text" id="username" required>
+            </div>
+            <!-- メールアドレス入力欄 -->
+            <div class="form-group">
+                <label for="email">メールアドレス:</label>
+                <input type="email" id="email" required>
+            </div>
+            <!-- パスワード入力欄 -->
+            <div class="form-group">
+                <label for="password">パスワード:</label>
+                <input type="password" id="password" required>
+                <span class="password-notice">※パスワードは6文字以上で設定してください</span>
+            </div>
+            <!-- エラーメッセージ表示エリア -->
+            <div id="errorMessage" class="error-message"></div>
+            <!-- ボタングループ -->
+            <div class="button-group">
+                <button type="submit" class="submit-btn">登録</button>
+                <button type="button" class="back-btn" onclick="location.href='index.html'">ログイン画面に戻る</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- JavaScriptファイルの読み込み -->
+    <script src="js/main.js"></script>
+</body>
+</html>
