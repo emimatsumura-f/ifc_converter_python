@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>変換履歴</h2>
+<div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>日時</th>
+                <th>入力ファイル</th>
+                <th>出力形式</th>
+                <th>ステータス</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for history in histories %}
+            <tr>
+                <td>{{ history.created_at }}</td>
+                <td>{{ history.input_file }}</td>
+                <td>{{ history.output_format }}</td>
+                <td>
+                    <span class="badge bg-{{ 'success' if history.status == 'completed' else 'warning' }}">
+                        {{ history.status }}
+                    </span>
+                </td>
+                <td>
+                    <a href="{{ url_for('ifc.download', history_id=history.id) }}" class="btn btn-sm btn-primary">ダウンロード</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" class="text-center">変換履歴がありません</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

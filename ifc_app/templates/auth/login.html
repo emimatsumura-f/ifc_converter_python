@@ -1,15 +1,31 @@
-{% extends 'base.html' %}
-
-{% block header %}
-  <h1>{% block title %}ログイン{% endblock %}</h1>
-{% endblock %}
+{% extends "base.html" %}
 
 {% block content %}
-  <form method="post">
-    <label for="username">ユーザー名</label>
-    <input name="username" id="username" required>
-    <label for="password">パスワード</label>
-    <input type="password" name="password" id="password" required>
-    <input type="submit" value="ログイン">
-  </form>
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">ログイン</h4>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">ユーザー名</label>
+                        <input type="text" class="form-control" id="username" name="username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">パスワード</label>
+                        <input type="password" class="form-control" id="password" name="password" required>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">ログイン</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="text-center mt-3">
+            <p>アカウントをお持ちでない方は<a href="{{ url_for('auth.register') }}">こちら</a>から新規登録してください。</p>
+        </div>
+    </div>
+</div>
 {% endblock %}

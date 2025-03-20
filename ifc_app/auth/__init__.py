@@ -3,38 +3,48 @@ from flask import (
     Blueprint, flash, g, redirect, render_template, request, session, url_for
 )
 from werkzeug.security import check_password_hash, generate_password_hash
+from flask_login import login_user, logout_user, login_required
+from flask_wtf import FlaskForm
+from wtforms import StringField, PasswordField, SubmitField
+from wtforms.validators import DataRequired, Email, EqualTo
 from ifc_app.db import get_db
+from ifc_app.models import User
 
 bp = Blueprint('auth', __name__, url_prefix='/auth')
 
-@bp.route('/register', methods=('GET', 'POST'))
+class RegistrationForm(FlaskForm):
+    username = StringField('ユーザー名', validators=[DataRequired()])
+    email = StringField('メールアドレス', validators=[DataRequired(), Email()])
+    password = PasswordField('パスワード', validators=[DataRequired()])
+    password2 = PasswordField('パスワード（確認）', validators=[DataRequired(), EqualTo('password')])
+    submit = SubmitField('登録')
+
+@bp.route('/register', methods=['GET', 'POST'])
 def register():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+    form = RegistrationForm()
+    if form.validate_on_submit():
         db = get_db()
         error = None
 
-        if not username:
-            error = 'ユーザー名は必須です'
-        elif not password:
-            error = 'パスワードは必須です'
-        
+        if db.execute('SELECT id FROM user WHERE username = ?', 
+            (form.username.data,)).fetchone() is not None:
+            error = 'ユーザー名 {} は既に登録されています。'.format(form.username.data)
+        elif db.execute('SELECT id FROM user WHERE email = ?',
+            (form.email.data,)).fetchone() is not None:
+            error = 'メールアドレス {} は既に登録されています。'.format(form.email.data)
+
         if error is None:
-            try:
-                db.execute(
-                    "INSERT INTO user (username, password) VALUES (?, ?)",
-                    (username, generate_password_hash(password)),
-                )
-                db.commit()
-            except db.IntegrityError:
-                error = f"ユーザー {username} は既に登録されています"
-            else:
-                return redirect(url_for("auth.login"))
+            db.execute(
+                'INSERT INTO user (username, email, password) VALUES (?, ?, ?)',
+                (form.username.data, form.email.data, generate_password_hash(form.password.data))
+            )
+            db.commit()
+            flash('登録が完了しました。ログインしてください。', 'success')
+            return redirect(url_for('auth.login'))
 
-        flash(error)
+        flash(error, 'error')
 
-    return render_template('auth/register.html')
+    return render_template('auth/register.html', form=form)
 
 @bp.route('/login', methods=('GET', 'POST'))
 def login():
@@ -43,44 +53,27 @@ def login():
         password = request.form['password']
         db = get_db()
         error = None
-        user = db.execute(
+
+        user_data = db.execute(
             'SELECT * FROM user WHERE username = ?', (username,)
         ).fetchone()
 
-        if user is None:
+        if user_data is None:
             error = 'ユーザー名が正しくありません'
-        elif not check_password_hash(user['password'], password):
+        elif not check_password_hash(user_data['password'], password):
             error = 'パスワードが正しくありません'
 
         if error is None:
-            session.clear()
-            session['user_id'] = user['id']
+            user = User(user_data['id'], user_data['username'])
+            login_user(user)
             return redirect(url_for('index'))
 
-        flash(error)
+        flash(error, 'error')
 
     return render_template('auth/login.html')
 
-@bp.before_app_request
-def load_logged_in_user():
-    user_id = session.get('user_id')
-
-    if user_id is None:
-        g.user = None
-    else:
-        g.user = get_db().execute(
-            'SELECT * FROM user WHERE id = ?', (user_id,)
-        ).fetchone()
-
 @bp.route('/logout')
+@login_required
 def logout():
-    session.clear()
+    logout_user()
     return redirect(url_for('index'))
-
-def login_required(view):
-    @functools.wraps(view)
-    def wrapped_view(**kwargs):
-        if g.user is None:
-            return redirect(url_for('auth.login'))
-        return view(**kwargs)
-    return wrapped_view
