@@ -33,8 +33,3 @@ Thumbs.db
 instance/
 *.sqlite
 *.db
-
-# Large binary files
-*.so
-*.dylib
-*.dll
