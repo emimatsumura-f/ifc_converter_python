@@ -1,1 +1,26 @@
+# 全てのテキストファイルの改行コードを自動的にLFに変換
+* text=auto
+
+# Python関連ファイル
+*.py text diff=python
+*.pyw text diff=python
+
+# SQLファイル
+*.sql text
+
+# テンプレートファイル
+*.html text diff=html
+*.css text diff=css
+*.js text diff=javascript
+
+# ドキュメント
+*.md text diff=markdown
+*.txt text
+
+# バイナリファイル（変換しない）
+*.db binary
+*.sqlite binary
+*.pyc binary
+*.pyo binary
+
 *.so filter=lfs diff=lfs merge=lfs -text
