@@ -4,7 +4,13 @@ from ifc_app.db import get_db
 import os
 from werkzeug.utils import secure_filename
 from datetime import datetime
+import ifcopenshell
+import logging
 
+# ロガーの設定
+logger = logging.getLogger(__name__)
+
+# Blueprintの定義
 bp = Blueprint('ifc', __name__)
 
 @bp.route('/')
@@ -17,7 +23,6 @@ def upload_file():
     # セッション確認
     if not current_user.is_authenticated:
         return jsonify({'error': 'ログインが必要です'}), 401
-
     if 'file' not in request.files:
         return jsonify({'error': 'ファイルが選択されていません'}), 400
     
@@ -49,11 +54,12 @@ def upload_file():
         upload_id = cursor.lastrowid
         db.commit()
 
-        # TODO: ここでIFCファイルの実際の解析処理を実装
-        elements = [
-            {'type': 'Column', 'name': 'C1', 'size': '400x400', 'weight': '1200kg', 'length': '4000mm'},
-            {'type': 'Beam', 'name': 'B1', 'size': '400x600', 'weight': '960kg', 'length': '6000mm'},
-        ]
+        # IFCファイルの解析処理
+        try:
+            elements = process_ifc_file(file_path)
+        except Exception as e:
+            logger.error(f"IFCファイルの解析中にエラーが発生: {str(e)}")
+            return jsonify({'error': 'IFCファイルの解析中にエラーが発生しました'}), 500
         
         # element_countを更新
         db.execute(
@@ -65,12 +71,8 @@ def upload_file():
         return jsonify({
             'redirect': url_for('ifc.preview', upload_id=upload_id)
         }), 200
-
-    except OSError as e:
-        print(f"Error creating directory or saving file: {str(e)}")
-        return jsonify({'error': 'ファイルの保存中にエラーが発生しました。システム管理者に連絡してください。'}), 500
     except Exception as e:
-        print(f"Unexpected error during file upload: {str(e)}")
+        logger.error(f"Unexpected error during file upload: {str(e)}")
         return jsonify({'error': 'ファイルのアップロード中にエラーが発生しました'}), 500
 
 @bp.route('/preview/<int:upload_id>')
@@ -86,11 +88,14 @@ def preview(upload_id):
         flash('指定された変換履歴が見つかりません。', 'error')
         return redirect(url_for('ifc.history'))
 
-    # 仮のデータを設定（実際の実装では、保存されたIFCファイルから読み込む）
-    elements = [
-        {'type': 'Column', 'name': 'C1', 'size': '400x400', 'weight': '1200kg', 'length': '4000mm'},
-        {'type': 'Beam', 'name': 'B1', 'size': '400x600', 'weight': '960kg', 'length': '6000mm'},
-    ]
+    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], upload['filename'])
+    
+    try:
+        elements = process_ifc_file(file_path)
+    except Exception as e:
+        logger.error(f"プレビュー生成中にエラーが発生: {str(e)}")
+        flash('IFCファイルの解析中にエラーが発生しました。', 'error')
+        return redirect(url_for('ifc.history'))
     
     return render_template('preview.html', upload=upload, elements=elements)
 
@@ -119,3 +124,50 @@ def download_csv(upload_id):
     
     # TODO: 実際のCSVダウンロード処理を実装
     return "CSV download not implemented yet", 501
+
+# IFCファイル処理関数
+def process_ifc_file(filepath):
+    """
+    IFCファイルを処理して部材情報を抽出する
+    """
+    try:
+        ifc_file = ifcopenshell.open(filepath)
+        elements = []
+        # BeamとColumnの要素を取得
+        beams = ifc_file.by_type('IfcBeam')
+        columns = ifc_file.by_type('IfcColumn')
+        
+        # Beamの情報を処理
+        for beam in beams:
+            try:
+                properties = {
+                    "type": "Beam",
+                    "name": beam.Name if hasattr(beam, 'Name') else "未定義",
+                    "size": "400x600",  # テスト用の仮の値
+                    "weight": "960kg",   # テスト用の仮の値
+                    "length": "6000mm"   # テスト用の仮の値
+                }
+                elements.append(properties)
+            except Exception as e:
+                logger.warning(f"Beam {beam.id()} の処理中にエラーが発生: {str(e)}")
+                continue
+                
+        # Columnの情報を処理
+        for column in columns:
+            try:
+                properties = {
+                    "type": "Column",
+                    "name": column.Name if hasattr(column, 'Name') else "未定義",
+                    "size": "400x400",   # テスト用の仮の値
+                    "weight": "1200kg",  # テスト用の仮の値
+                    "length": "4000mm"   # テスト用の仮の値
+                }
+                elements.append(properties)
+            except Exception as e:
+                logger.warning(f"Column {column.id()} の処理中にエラーが発生: {str(e)}")
+                continue
+                
+        return elements
+    except Exception as e:
+        logger.error(f"IFCファイルの処理中にエラーが発生: {str(e)}")
+        raise
