@@ -8,17 +8,24 @@
                 <h4 class="mb-0">ログイン</h4>
             </div>
             <div class="card-body">
-                <form method="post">
+                <form method="POST" action="{{ url_for('auth.login') }}">
+                    {{ form.csrf_token }}
                     <div class="mb-3">
-                        <label for="username" class="form-label">ユーザー名</label>
-                        <input type="text" class="form-control" id="username" name="username" required>
+                        {{ form.username.label(class="form-label") }}
+                        {{ form.username(class="form-control") }}
+                        {% for error in form.username.errors %}
+                            <div class="alert alert-danger">{{ error }}</div>
+                        {% endfor %}
                     </div>
                     <div class="mb-3">
-                        <label for="password" class="form-label">パスワード</label>
-                        <input type="password" class="form-control" id="password" name="password" required>
+                        {{ form.password.label(class="form-label") }}
+                        {{ form.password(class="form-control") }}
+                        {% for error in form.password.errors %}
+                            <div class="alert alert-danger">{{ error }}</div>
+                        {% endfor %}
                     </div>
                     <div class="d-grid">
-                        <button type="submit" class="btn btn-primary">ログイン</button>
+                        {{ form.submit(class="btn btn-primary") }}
                     </div>
                 </form>
             </div>

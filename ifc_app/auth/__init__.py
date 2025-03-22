@@ -19,6 +19,11 @@ class RegistrationForm(FlaskForm):
     password2 = PasswordField('パスワード（確認）', validators=[DataRequired(), EqualTo('password')])
     submit = SubmitField('登録')
 
+class LoginForm(FlaskForm):
+    username = StringField('ユーザー名', validators=[DataRequired()])
+    password = PasswordField('パスワード', validators=[DataRequired()])
+    submit = SubmitField('ログイン')
+
 @bp.route('/register', methods=['GET', 'POST'])
 def register():
     form = RegistrationForm()
@@ -46,21 +51,20 @@ def register():
 
     return render_template('auth/register.html', form=form)
 
-@bp.route('/login', methods=('GET', 'POST'))
+@bp.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+    form = LoginForm()
+    if form.validate_on_submit():
         db = get_db()
         error = None
 
         user_data = db.execute(
-            'SELECT * FROM user WHERE username = ?', (username,)
+            'SELECT * FROM user WHERE username = ?', (form.username.data,)
         ).fetchone()
 
         if user_data is None:
             error = 'ユーザー名が正しくありません'
-        elif not check_password_hash(user_data['password'], password):
+        elif not check_password_hash(user_data['password'], form.password.data):
             error = 'パスワードが正しくありません'
 
         if error is None:
@@ -70,10 +74,10 @@ def login():
 
         flash(error, 'error')
 
-    return render_template('auth/login.html')
+    return render_template('auth/login.html', form=form)
 
 @bp.route('/logout')
 @login_required
 def logout():
     logout_user()
-    return redirect(url_for('index'))
+    return redirect(url_for('auth.login'))
