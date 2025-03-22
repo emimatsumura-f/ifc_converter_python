@@ -34,3 +34,5 @@ Thumbs.db
 instance/
 *.sqlite
 *.db
+instance/uploads/*
+!instance/uploads/.gitkeep
