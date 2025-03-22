@@ -2,12 +2,13 @@
 .venv/
 venv/
 env/
-.env/
+.env
 
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
 
 # Distribution / packaging
 dist/
