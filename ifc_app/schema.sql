@@ -11,9 +11,8 @@ CREATE TABLE user (
 CREATE TABLE conversion_history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
-  input_file TEXT NOT NULL,
-  output_format TEXT NOT NULL,
-  status TEXT NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  filename TEXT NOT NULL,
+  processed_date TIMESTAMP NOT NULL,
+  element_count INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY (user_id) REFERENCES user (id)
 );

@@ -8,7 +8,8 @@
                 <h4 class="mb-0">IFCファイルのアップロード</h4>
             </div>
             <div class="card-body">
-                <form action="#" method="post" enctype="multipart/form-data" id="uploadForm">
+                <form action="{{ url_for('ifc.upload_file') }}" method="post" enctype="multipart/form-data" id="uploadForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
                         <label for="file" class="form-label">IFCファイルを選択してください</label>
                         <input type="file" class="form-control" id="file" name="file" accept=".ifc" required>

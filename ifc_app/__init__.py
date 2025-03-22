@@ -5,25 +5,34 @@ from flask_wtf.csrf import CSRFProtect
 
 def create_app(test_config=None):
     app = Flask(__name__, instance_relative_config=True)
+    
     app.config.from_mapping(
-        SECRET_KEY='dev',
+        SECRET_KEY=os.environ.get('SECRET_KEY', 'dev'),
         DATABASE=os.path.join(app.instance_path, 'ifc_app.sqlite'),
-        DEBUG=True  # デバッグモードを有効化
+        UPLOAD_FOLDER=os.path.join(app.instance_path, 'uploads'),
+        MAX_CONTENT_LENGTH=100 * 1024 * 1024  # 最大100MB
     )
 
-    # CSRF保護を初期化
+    # CSRF保護の設定
     csrf = CSRFProtect()
     csrf.init_app(app)
+
+    # セッションの設定
+    app.config['SESSION_COOKIE_SECURE'] = True
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['PERMANENT_SESSION_LIFETIME'] = 1800  # 30分
 
     if test_config is None:
         app.config.from_pyfile('config.py', silent=True)
     else:
         app.config.update(test_config)
 
+    # インスタンスフォルダとアップロードディレクトリの作成
     try:
-        os.makedirs(app.instance_path)
-    except OSError:
-        pass
+        os.makedirs(app.instance_path, exist_ok=True)
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    except OSError as e:
+        print(f"Error creating directories: {str(e)}")
 
     # データベース初期化
     from ifc_app import db
