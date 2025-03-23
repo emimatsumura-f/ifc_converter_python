@@ -36,3 +36,7 @@ instance/
 *.db
 instance/uploads/*
 !instance/uploads/.gitkeep
+ifc_env/
+__pycache__/
+*.pyc
+instance/*.sqlite

@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: ifc-converter
+    env: python
+    buildCommand: |
+      # システムの依存パッケージをインストール
+      apt-get update && apt-get install -y \
+        build-essential \
+        cmake \
+        libboost-all-dev \
+        python3-dev
+      # Pythonパッケージのインストール
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: gunicorn "ifc_app:create_app()"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: PYTHONPATH
+        value: .
+    healthCheckPath: /

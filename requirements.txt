@@ -14,7 +14,11 @@ Jinja2==3.1.6
 MarkupSafe==2.1.5
 packaging==24.2
 python-dotenv==1.0.1
-UNKNOWN @ git+https://github.com/IfcOpenShell/IfcOpenShell.git@09a43f13395ff23b237b0429a21e28fa6b190fda
+ifcopenshell==0.7.0
 Werkzeug==3.0.6
 WTForms==3.1.2
 zipp==3.20.2
+numpy>=1.21.0
+setuptools>=42.0.0
+wheel>=0.37.0
+cmake>=3.21.0
