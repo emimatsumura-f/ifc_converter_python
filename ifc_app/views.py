@@ -1,10 +1,10 @@
 from flask import Blueprint, render_template, flash, redirect, url_for, request, send_file, jsonify, current_app, make_response, session
 from flask_login import login_required, current_user
 from ifc_app.db import get_db
+from ifc_app.ifc_processor import process_ifc_file
 import os
 from werkzeug.utils import secure_filename
 from datetime import datetime
-import ifcopenshell
 import logging
 
 # ロガーの設定
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 bp = Blueprint('ifc', __name__)
 
 @bp.route('/')
+@login_required  # ログイン要求を追加
 def index():
     return render_template('index.html')
 
@@ -124,50 +125,3 @@ def download_csv(upload_id):
     
     # TODO: 実際のCSVダウンロード処理を実装
     return "CSV download not implemented yet", 501
-
-# IFCファイル処理関数
-def process_ifc_file(filepath):
-    """
-    IFCファイルを処理して部材情報を抽出する
-    """
-    try:
-        ifc_file = ifcopenshell.open(filepath)
-        elements = []
-        # BeamとColumnの要素を取得
-        beams = ifc_file.by_type('IfcBeam')
-        columns = ifc_file.by_type('IfcColumn')
-        
-        # Beamの情報を処理
-        for beam in beams:
-            try:
-                properties = {
-                    "type": "Beam",
-                    "name": beam.Name if hasattr(beam, 'Name') else "未定義",
-                    "size": "400x600",  # テスト用の仮の値
-                    "weight": "960kg",   # テスト用の仮の値
-                    "length": "6000mm"   # テスト用の仮の値
-                }
-                elements.append(properties)
-            except Exception as e:
-                logger.warning(f"Beam {beam.id()} の処理中にエラーが発生: {str(e)}")
-                continue
-                
-        # Columnの情報を処理
-        for column in columns:
-            try:
-                properties = {
-                    "type": "Column",
-                    "name": column.Name if hasattr(column, 'Name') else "未定義",
-                    "size": "400x400",   # テスト用の仮の値
-                    "weight": "1200kg",  # テスト用の仮の値
-                    "length": "4000mm"   # テスト用の仮の値
-                }
-                elements.append(properties)
-            except Exception as e:
-                logger.warning(f"Column {column.id()} の処理中にエラーが発生: {str(e)}")
-                continue
-                
-        return elements
-    except Exception as e:
-        logger.error(f"IFCファイルの処理中にエラーが発生: {str(e)}")
-        raise
