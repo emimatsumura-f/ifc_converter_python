@@ -1,144 +1,140 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // フォーム要素の取得（IDセレクタを使用）
     const form = document.querySelector('#uploadForm');
     if (!form) return;
 
-    const fileInput = form.querySelector('input[type="file"]');
+    const fileInput = document.getElementById('file-upload');
     const uploadBtn = form.querySelector('#uploadBtn');
     const spinner = uploadBtn ? uploadBtn.querySelector('.spinner-border') : null;
-    
-    // プログレスバーコンテナの作成
-    const progressContainer = document.createElement('div');
-    progressContainer.className = 'progress mb-3 d-none';
-    progressContainer.innerHTML = `
-        <div class="progress-bar" role="progressbar" style="width: 0%"
-             aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
-    `;
+    const progressBar = document.getElementById('uploadProgress');
+    const errorDiv = document.getElementById('errorMessage');
+    const csrfToken = form.querySelector('input[name="csrf_token"]').value;
 
-    // プログレスバーの挿入位置を特定
-    if (fileInput && fileInput.parentElement) {
-        fileInput.parentElement.insertBefore(progressContainer, fileInput.nextSibling);
-    }
+    let selectedFile = null;
 
     // ファイル選択時の処理
     if (fileInput) {
-        fileInput.addEventListener('change', function() {
-            const file = this.files[0];
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
             if (file) {
                 if (!file.name.toLowerCase().endsWith('.ifc')) {
-                    alert('IFCファイルを選択してください');
+                    showError('IFCファイルのみアップロード可能です');
                     this.value = '';
-                } else if (file.size > 100 * 1024 * 1024) { // 100MB
-                    alert('ファイルサイズは100MB以下にしてください');
-                    this.value = '';
+                    selectedFile = null;
+                    return;
                 }
+                selectedFile = file;
             }
         });
     }
 
-    // フォームサブミット時の処理
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
+    // アップロードボタンクリック時の処理
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (!selectedFile) {
+                showError('ファイルを選択してください');
+                return;
+            }
+            uploadFile(selectedFile);
+            if (uploadBtn) {
+                uploadBtn.disabled = true;
+                if (spinner) spinner.classList.remove('d-none');
+            }
+        });
+    }
 
-        // ファイルチェック
-        const formData = new FormData(this);
-        if (!formData.get('file')) {
-            alert('ファイルを選択してください');
-            return;
-        }
+    function uploadFile(file) {
+        const formData = new FormData();
+        formData.append('file', file);
 
-        const xhr = new XMLHttpRequest();
+        fetch('/upload', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showError(data.error);
+                return;
+            }
+            uploadChunks(file, data.upload_id, data.chunk_size, data.chunks_total);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showError('アップロード準備中にエラーが発生しました');
+        });
+    }
 
-        // プログレスバーの表示
-        progressContainer.classList.remove('d-none');
-        
-        // ボタンの状態を更新
+    function uploadChunks(file, uploadId, chunkSize, totalChunks) {
+        progressBar.style.display = 'block';
+        progressBar.max = totalChunks;
+        progressBar.value = 0;
+
         if (uploadBtn) {
             uploadBtn.disabled = true;
-            if (spinner) {
-                spinner.classList.remove('d-none');
-            }
-            uploadBtn.textContent = ' アップロード中...';
-            if (spinner) {
-                uploadBtn.insertBefore(spinner, uploadBtn.firstChild);
-            }
+            if (spinner) spinner.classList.remove('d-none');
         }
 
-        // アップロードの進捗処理
-        xhr.upload.addEventListener('progress', function(e) {
-            if (e.lengthComputable) {
-                const percentComplete = (e.loaded / e.total) * 100;
-                const progressBar = progressContainer.querySelector('.progress-bar');
-                if (progressBar) {
-                    progressBar.style.width = percentComplete + '%';
-                    progressBar.setAttribute('aria-valuenow', percentComplete);
-                    progressBar.textContent = Math.round(percentComplete) + '%';
-                }
-            }
-        });
+        let uploadedChunks = 0;
 
-        // レスポンス処理
-        xhr.addEventListener('load', function() {
-            if (xhr.status === 200) {
-                try {
-                    const response = JSON.parse(xhr.responseText);
-                    if (response.redirect) {
-                        window.location.href = response.redirect;
-                    } else if (response.error) {
-                        alert(response.error);
-                        resetUploadForm();
-                    }
-                } catch (e) {
-                    console.error('Response parsing error:', e);
-                    alert('レスポンスの処理中にエラーが発生しました');
+        // チャンクごとのアップロード
+        for (let chunkNumber = 0; chunkNumber < totalChunks; chunkNumber++) {
+            const start = chunkNumber * chunkSize;
+            const end = Math.min(start + chunkSize, file.size);
+            const chunk = file.slice(start, end);
+
+            const formData = new FormData();
+            formData.append('chunk', chunk);
+
+            fetch(`/upload/${uploadId}/chunk/${chunkNumber}`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showError(data.error);
                     resetUploadForm();
+                    return;
                 }
-            } else {
-                try {
-                    const response = JSON.parse(xhr.responseText);
-                    alert(response.error || 'アップロード中にエラーが発生しました');
-                } catch (e) {
-                    // HTMLレスポンスの場合（認証エラーなど）
-                    if (xhr.responseText.includes('<!DOCTYPE')) {
-                        window.location.reload(); // セッション切れの場合はページをリロード
-                    } else {
-                        alert('アップロード中にエラーが発生しました');
-                    }
+
+                uploadedChunks++;
+                progressBar.value = uploadedChunks;
+
+                if (data.status === 'completed') {
+                    window.location.href = data.redirect;
                 }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showError('チャンクのアップロード中にエラーが発生しました');
                 resetUploadForm();
-            }
-        });
-
-        xhr.addEventListener('error', function() {
-            alert('アップロード中にエラーが発生しました');
-            resetUploadForm();
-        });
-
-        function resetUploadForm() {
-            if (uploadBtn) {
-                uploadBtn.disabled = false;
-                if (spinner) {
-                    spinner.classList.add('d-none');
-                }
-                uploadBtn.textContent = 'アップロードして解析';
-            }
-            progressContainer.classList.add('d-none');
+            });
         }
+    }
 
-        // CSRFトークンの取得と設定
-        const csrfToken = form.querySelector('input[name="csrf_token"]').value;
-        
-        // リクエストの送信
-        const url = form.getAttribute('action');
-        if (!url) {
-            alert('アップロードURLが設定されていません');
-            return;
+    function showError(message) {
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+        setTimeout(() => {
+            errorDiv.style.display = 'none';
+        }, 5000);
+    }
+
+    function resetUploadForm() {
+        if (uploadBtn) {
+            uploadBtn.disabled = false;
+            if (spinner) spinner.classList.add('d-none');
         }
-
-        xhr.open('POST', url, true);
-        xhr.setRequestHeader('X-CSRFToken', csrfToken);
-        xhr.send(formData);
-    });
+        progressBar.style.display = 'none';
+        progressBar.value = 0;
+    }
 });
 
 // Featherアイコンの初期化

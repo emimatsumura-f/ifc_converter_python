@@ -11,12 +11,16 @@
                 <form action="{{ url_for('ifc.upload_file') }}" method="post" enctype="multipart/form-data" id="uploadForm">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
-                        <label for="file" class="form-label">IFCファイルを選択してください</label>
-                        <input type="file" class="form-control" id="file" name="file" accept=".ifc" required>
+                        <label for="file-upload" class="form-label">IFCファイルを選択してください</label>
+                        <input type="file" class="form-control" id="file-upload" name="file" accept=".ifc" required>
                         <div class="form-text">
                             ファイルサイズの制限: 100MB以下
                         </div>
                     </div>
+                    <div class="mb-3">
+                        <progress id="uploadProgress" style="display: none; width: 100%;" value="0"></progress>
+                    </div>
+                    <div id="errorMessage" class="alert alert-danger" style="display: none;"></div>
                     <div class="d-grid">
                         <button type="submit" class="btn btn-primary" id="uploadBtn">
                             <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>

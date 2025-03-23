@@ -1,5 +1,6 @@
 DROP TABLE IF EXISTS user;
 DROP TABLE IF EXISTS conversion_history;
+DROP TABLE IF EXISTS file_uploads;
 
 CREATE TABLE user (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -15,4 +16,19 @@ CREATE TABLE conversion_history (
   processed_date TIMESTAMP NOT NULL,
   element_count INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY (user_id) REFERENCES user (id)
+);
+
+CREATE TABLE file_uploads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    upload_id INTEGER NOT NULL,
+    filename TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    chunk_size INTEGER NOT NULL,
+    chunks_total INTEGER NOT NULL,
+    chunks_uploaded INTEGER DEFAULT 0,
+    upload_status TEXT NOT NULL CHECK (upload_status IN ('pending', 'uploading', 'processing', 'completed', 'failed')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES user (id),
+    FOREIGN KEY (upload_id) REFERENCES conversion_history (id)
 );

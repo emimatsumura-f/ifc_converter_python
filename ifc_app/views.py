@@ -3,6 +3,7 @@ from flask_login import login_required, current_user
 from ifc_app.db import get_db
 from ifc_app.ifc_processor import process_ifc_file
 import os
+import shutil
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import logging
@@ -23,9 +24,9 @@ def index():
 @bp.route('/upload', methods=['POST'])
 @login_required
 def upload_file():
-    # セッション確認
     if not current_user.is_authenticated:
         return jsonify({'error': 'ログインが必要です'}), 401
+
     if 'file' not in request.files:
         return jsonify({'error': 'ファイルが選択されていません'}), 400
     
@@ -37,46 +38,135 @@ def upload_file():
         return jsonify({'error': 'IFCファイルのみアップロード可能です'}), 400
 
     try:
-        # アップロードフォルダの存在確認
+        db = get_db()
+        # まず変換履歴レコードを作成
+        cursor = db.execute(
+            'INSERT INTO conversion_history (user_id, filename, processed_date, element_count) VALUES (?, ?, ?, ?)',
+            (current_user.id, secure_filename(file.filename), datetime.now(), 0)
+        )
+        upload_id = cursor.lastrowid
+
+        # アップロード情報を保存
+        chunk_size = 1024 * 1024  # 1MB chunks
+        file.seek(0, 2)  # ファイルの末尾に移動
+        file_size = file.tell()  # ファイルサイズを取得
+        file.seek(0)  # ファイルポインタを先頭に戻す
+        
+        chunks_total = (file_size + chunk_size - 1) // chunk_size
+
+        db.execute(
+            'INSERT INTO file_uploads (user_id, upload_id, filename, file_size, chunk_size, chunks_total, upload_status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            (current_user.id, upload_id, secure_filename(file.filename), file_size, chunk_size, chunks_total, 'pending')
+        )
+        db.commit()
+
+        # アップロード用ディレクトリの作成
         upload_folder = current_app.config['UPLOAD_FOLDER']
         if not os.path.exists(upload_folder):
             os.makedirs(upload_folder, exist_ok=True)
-            
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(upload_folder, filename)
-        
-        # ファイルを保存
-        file.save(file_path)
-        
-        # データベースに登録
+
+        return jsonify({
+            'upload_id': upload_id,
+            'chunks_total': chunks_total,
+            'chunk_size': chunk_size
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Unexpected error during file upload initialization: {str(e)}")
+        return jsonify({'error': 'ファイルのアップロード準備中にエラーが発生しました'}), 500
+
+@bp.route('/upload/<int:upload_id>/chunk/<int:chunk_number>', methods=['POST'])
+@login_required
+def upload_chunk(upload_id, chunk_number):
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'ログインが必要です'}), 401
+
+    if 'chunk' not in request.files:
+        return jsonify({'error': 'チャンクデータが見つかりません'}), 400
+
+    try:
         db = get_db()
-        cursor = db.execute(
-            'INSERT INTO conversion_history (user_id, filename, processed_date, element_count) VALUES (?, ?, ?, ?)',
-            (current_user.id, filename, datetime.now(), 0)
+        # アップロード情報の取得と検証
+        upload = db.execute(
+            'SELECT * FROM file_uploads WHERE upload_id = ? AND user_id = ?',
+            (upload_id, current_user.id)
+        ).fetchone()
+
+        if upload is None:
+            return jsonify({'error': 'アップロード情報が見つかりません'}), 404
+
+        if chunk_number >= upload['chunks_total']:
+            return jsonify({'error': '不正なチャンク番号です'}), 400
+
+        # チャンクの保存
+        chunk = request.files['chunk']
+        temp_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], f'temp_{upload_id}')
+        os.makedirs(temp_dir, exist_ok=True)
+        chunk_path = os.path.join(temp_dir, f'chunk_{chunk_number}')
+        chunk.save(chunk_path)
+
+        # アップロード状態の更新
+        db.execute(
+            'UPDATE file_uploads SET chunks_uploaded = chunks_uploaded + 1, upload_status = ? WHERE upload_id = ?',
+            ('uploading', upload_id)
         )
-        upload_id = cursor.lastrowid
         db.commit()
 
-        # IFCファイルの解析処理
-        try:
-            elements = process_ifc_file(file_path)
-        except Exception as e:
-            logger.error(f"IFCファイルの解析中にエラーが発生: {str(e)}")
-            return jsonify({'error': 'IFCファイルの解析中にエラーが発生しました'}), 500
-        
-        # element_countを更新
-        db.execute(
-            'UPDATE conversion_history SET element_count = ? WHERE id = ?',
-            (len(elements), upload_id)
-        )
-        db.commit()
-        
+        # 全チャンクがアップロードされた場合、ファイルの結合を行う
+        updated_upload = db.execute(
+            'SELECT * FROM file_uploads WHERE upload_id = ?', 
+            (upload_id,)
+        ).fetchone()
+
+        if updated_upload['chunks_uploaded'] == updated_upload['chunks_total']:
+            try:
+                final_path = os.path.join(current_app.config['UPLOAD_FOLDER'], upload['filename'])
+                with open(final_path, 'wb') as outfile:
+                    for i in range(updated_upload['chunks_total']):
+                        chunk_path = os.path.join(temp_dir, f'chunk_{i}')
+                        with open(chunk_path, 'rb') as infile:
+                            outfile.write(infile.read())
+
+                # 一時ファイルの削除
+                shutil.rmtree(temp_dir)
+
+                # IFCファイルの解析処理
+                elements = process_ifc_file(final_path)
+                
+                # element_countを更新
+                db.execute(
+                    'UPDATE conversion_history SET element_count = ? WHERE id = ?',
+                    (len(elements), upload_id)
+                )
+                db.execute(
+                    'UPDATE file_uploads SET upload_status = ? WHERE upload_id = ?',
+                    ('completed', upload_id)
+                )
+                db.commit()
+
+                return jsonify({
+                    'status': 'completed',
+                    'redirect': url_for('ifc.preview', upload_id=upload_id)
+                }), 200
+
+            except Exception as e:
+                logger.error(f"Error processing completed file: {str(e)}")
+                db.execute(
+                    'UPDATE file_uploads SET upload_status = ? WHERE upload_id = ?',
+                    ('failed', upload_id)
+                )
+                db.commit()
+                return jsonify({'error': 'ファイルの処理中にエラーが発生しました'}), 500
+
         return jsonify({
-            'redirect': url_for('ifc.preview', upload_id=upload_id)
+            'status': 'uploading',
+            'chunks_uploaded': updated_upload['chunks_uploaded'],
+            'chunks_total': updated_upload['chunks_total']
         }), 200
+
     except Exception as e:
-        logger.error(f"Unexpected error during file upload: {str(e)}")
-        return jsonify({'error': 'ファイルのアップロード中にエラーが発生しました'}), 500
+        logger.error(f"Error handling chunk upload: {str(e)}")
+        return jsonify({'error': 'チャンクのアップロード中にエラーが発生しました'}), 500
 
 @bp.route('/preview/<int:upload_id>')
 @login_required
