@@ -10,7 +10,10 @@ def create_app(test_config=None):
         SECRET_KEY=os.environ.get('SECRET_KEY', 'dev'),
         DATABASE=os.path.join(app.instance_path, 'ifc_app.sqlite'),
         UPLOAD_FOLDER=os.path.join(app.instance_path, 'uploads'),
-        MAX_CONTENT_LENGTH=100 * 1024 * 1024  # 最大100MB
+        MAX_CONTENT_LENGTH=100 * 1024 * 1024,  # 最大100MB
+        # タイムアウトとバッファサイズの設定を追加
+        PERMANENT_SESSION_LIFETIME=1800,  # 30分
+        MAX_BUFFER_SIZE=100 * 1024 * 1024  # アップロード用バッファサイズ
     )
 
     # CSRF保護の設定

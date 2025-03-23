@@ -6,6 +6,8 @@ import os
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import logging
+import io
+import csv
 
 # ロガーの設定
 logger = logging.getLogger(__name__)
@@ -123,5 +125,23 @@ def download_csv(upload_id):
         flash('指定された変換履歴が見つかりません。', 'error')
         return redirect(url_for('ifc.history'))
     
-    # TODO: 実際のCSVダウンロード処理を実装
-    return "CSV download not implemented yet", 501
+    try:
+        file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], upload['filename'])
+        elements = process_ifc_file(file_path)
+        
+        # CSVデータを生成
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=['type', 'name', 'description', 'size', 'weight', 'length'])
+        writer.writeheader()
+        writer.writerows(elements)
+        
+        # CSVファイルをレスポンスとして返す
+        response = make_response(output.getvalue())
+        response.headers["Content-Disposition"] = f"attachment; filename=ifc_elements_{upload_id}.csv"
+        response.headers["Content-type"] = "text/csv; charset=utf-8"
+        return response
+        
+    except Exception as e:
+        logger.error(f"CSVファイルの生成中にエラーが発生: {str(e)}")
+        flash('CSVファイルの生成中にエラーが発生しました。', 'error')
+        return redirect(url_for('ifc.history'))
