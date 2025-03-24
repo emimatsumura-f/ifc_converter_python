@@ -25,14 +25,14 @@ def index():
 @login_required
 def upload_file():
     if not current_user.is_authenticated:
-        return jsonify({'error': 'ログインが必要です'}), 401
+        return jsonify({'error': 'アップロード中にエラーが発生しました'}), 401
 
     if 'file' not in request.files:
-        return jsonify({'error': 'ファイルが選択されていません'}), 400
+        return jsonify({'error': 'アップロード中にエラーが発生しました'}), 400
     
     file = request.files['file']
     if file.filename == '':
-        return jsonify({'error': 'ファイルが選択されていません'}), 400
+        return jsonify({'error': 'アップロード中にエラーが発生しました'}), 400
         
     if not file.filename.endswith('.ifc'):
         return jsonify({'error': 'IFCファイルのみアップロード可能です'}), 400
@@ -41,8 +41,8 @@ def upload_file():
         db = get_db()
         # まず変換履歴レコードを作成
         cursor = db.execute(
-            'INSERT INTO conversion_history (user_id, filename, processed_date, element_count) VALUES (?, ?, ?, ?)',
-            (current_user.id, secure_filename(file.filename), datetime.now(), 0)
+            'INSERT INTO conversion_history (user_id, filename, processed_date, element_count, status) VALUES (?, ?, ?, ?, ?)',
+            (current_user.id, secure_filename(file.filename), datetime.now(), 0, 'processing')
         )
         upload_id = cursor.lastrowid
 
@@ -73,16 +73,16 @@ def upload_file():
 
     except Exception as e:
         logger.error(f"Unexpected error during file upload initialization: {str(e)}")
-        return jsonify({'error': 'ファイルのアップロード準備中にエラーが発生しました'}), 500
+        return jsonify({'error': 'アップロード中にエラーが発生しました'}), 500
 
 @bp.route('/upload/<int:upload_id>/chunk/<int:chunk_number>', methods=['POST'])
 @login_required
 def upload_chunk(upload_id, chunk_number):
     if not current_user.is_authenticated:
-        return jsonify({'error': 'ログインが必要です'}), 401
+        return jsonify({'error': 'アップロード中にエラーが発生しました'}), 401
 
     if 'chunk' not in request.files:
-        return jsonify({'error': 'チャンクデータが見つかりません'}), 400
+        return jsonify({'error': 'アップロード中にエラーが発生しました'}), 400
 
     try:
         db = get_db()
@@ -93,7 +93,7 @@ def upload_chunk(upload_id, chunk_number):
         ).fetchone()
 
         if upload is None:
-            return jsonify({'error': 'アップロード情報が見つかりません'}), 404
+            return jsonify({'error': 'アップロード中にエラーが発生しました'}), 404
 
         if chunk_number >= upload['chunks_total']:
             return jsonify({'error': '不正なチャンク番号です'}), 400
@@ -133,10 +133,10 @@ def upload_chunk(upload_id, chunk_number):
                 # IFCファイルの解析処理
                 elements = process_ifc_file(final_path)
                 
-                # element_countを更新
+                # element_countとステータスを更新
                 db.execute(
-                    'UPDATE conversion_history SET element_count = ? WHERE id = ?',
-                    (len(elements), upload_id)
+                    'UPDATE conversion_history SET element_count = ?, status = ? WHERE id = ?',
+                    (len(elements), 'completed', upload_id)
                 )
                 db.execute(
                     'UPDATE file_uploads SET upload_status = ? WHERE upload_id = ?',
@@ -152,11 +152,15 @@ def upload_chunk(upload_id, chunk_number):
             except Exception as e:
                 logger.error(f"Error processing completed file: {str(e)}")
                 db.execute(
+                    'UPDATE conversion_history SET status = ? WHERE id = ?',
+                    ('failed', upload_id)
+                )
+                db.execute(
                     'UPDATE file_uploads SET upload_status = ? WHERE upload_id = ?',
                     ('failed', upload_id)
                 )
                 db.commit()
-                return jsonify({'error': 'ファイルの処理中にエラーが発生しました'}), 500
+                return jsonify({'error': 'アップロード中にエラーが発生しました'}), 500
 
         return jsonify({
             'status': 'uploading',
@@ -166,7 +170,7 @@ def upload_chunk(upload_id, chunk_number):
 
     except Exception as e:
         logger.error(f"Error handling chunk upload: {str(e)}")
-        return jsonify({'error': 'チャンクのアップロード中にエラーが発生しました'}), 500
+        return jsonify({'error': 'アップロード中にエラーが発生しました'}), 500
 
 @bp.route('/preview/<int:upload_id>')
 @login_required
@@ -196,11 +200,11 @@ def preview(upload_id):
 @login_required
 def history():
     db = get_db()
-    uploads = db.execute(
+    histories = db.execute(
         'SELECT * FROM conversion_history WHERE user_id = ? ORDER BY processed_date DESC',
         (current_user.id,)
     ).fetchall()
-    return render_template('history.html', uploads=uploads)
+    return render_template('history.html', histories=histories)
 
 @bp.route('/download_csv/<int:upload_id>')
 @login_required
@@ -234,4 +238,47 @@ def download_csv(upload_id):
     except Exception as e:
         logger.error(f"CSVファイルの生成中にエラーが発生: {str(e)}")
         flash('CSVファイルの生成中にエラーが発生しました。', 'error')
+        return redirect(url_for('ifc.history'))
+
+@bp.route('/history/<int:history_id>/delete', methods=['POST'])
+@login_required
+def delete_history(history_id):
+    db = get_db()
+    history = db.execute(
+        'SELECT * FROM conversion_history WHERE id = ? AND user_id = ?',
+        (history_id, current_user.id)
+    ).fetchone()
+
+    if history is None:
+        return jsonify({'success': False, 'error': '履歴が見つかりません'}), 404
+
+    try:
+        db.execute('DELETE FROM conversion_history WHERE id = ?', (history_id,))
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@bp.route('/preview/<int:history_id>')
+@login_required
+def preview_history(history_id):
+    db = get_db()
+    history = db.execute(
+        'SELECT * FROM conversion_history WHERE id = ? AND user_id = ?',
+        (history_id, current_user.id)
+    ).fetchone()
+
+    if history is None:
+        flash('指定された履歴が見つかりません')
+        return redirect(url_for('ifc.history'))
+
+    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], history['filename'])
+    
+    try:
+        elements = process_ifc_file(file_path)
+        return render_template('preview.html', history=history, elements=elements)
+    except Exception as e:
+        logger.error(f"プレビュー生成中にエラーが発生: {str(e)}")
+        flash('IFCファイルの解析中にエラーが発生しました。', 'error')
         return redirect(url_for('ifc.history'))

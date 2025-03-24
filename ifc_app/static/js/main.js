@@ -1,4 +1,7 @@
 document.addEventListener('DOMContentLoaded', function() {
+    // CSRFトークンの取得
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
     const form = document.querySelector('#uploadForm');
     if (!form) return;
 
@@ -7,7 +10,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const spinner = uploadBtn ? uploadBtn.querySelector('.spinner-border') : null;
     const progressBar = document.getElementById('uploadProgress');
     const errorDiv = document.getElementById('errorMessage');
-    const csrfToken = form.querySelector('input[name="csrf_token"]').value;
 
     let selectedFile = null;
 
@@ -64,7 +66,7 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(error => {
             console.error('Error:', error);
-            showError('アップロード準備中にエラーが発生しました');
+            showError('アップロード中にエラーが発生しました');
         });
     }
 
@@ -113,7 +115,7 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .catch(error => {
                 console.error('Error:', error);
-                showError('チャンクのアップロード中にエラーが発生しました');
+                showError('アップロード中にエラーが発生しました');
                 resetUploadForm();
             });
         }
@@ -134,6 +136,73 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         progressBar.style.display = 'none';
         progressBar.value = 0;
+    }
+
+    // 履歴機能の実装
+    const historyTable = document.querySelector('.history-table');
+    if (historyTable) {
+        // 履歴テーブルのイベント処理
+        historyTable.addEventListener('click', function(e) {
+            // 削除ボタンのクリック処理
+            const deleteButton = e.target.closest('.delete-history');
+            if (deleteButton) {
+                e.preventDefault();
+                e.stopPropagation();
+                const historyId = deleteButton.dataset.historyId;
+                if (confirm('この履歴を削除してもよろしいですか？')) {
+                    deleteHistory(historyId);
+                }
+            }
+
+            // ファイル名のクリック処理
+            const filenameLink = e.target.closest('.history-filename');
+            if (filenameLink) {
+                e.preventDefault();
+                e.stopPropagation();
+                const historyId = filenameLink.dataset.historyId;
+                showPreview(historyId);
+            }
+        });
+    }
+
+    function deleteHistory(historyId) {
+        fetch(`/history/${historyId}/delete`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            credentials: 'same-origin'
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                const row = document.querySelector(`tr[data-history-id="${historyId}"]`);
+                if (row) {
+                    row.remove();
+                    // テーブルが空になった場合、メッセージを表示
+                    if (document.querySelectorAll('.history-table tbody tr').length === 0) {
+                        const cardBody = document.querySelector('.card-body');
+                        cardBody.innerHTML = '<div class="alert alert-info">まだ変換履歴がありません。</div>';
+                    }
+                }
+            } else {
+                alert(data.error || '削除中にエラーが発生しました');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('削除中にエラーが発生しました');
+        });
+    }
+
+    function showPreview(historyId) {
+        window.location.href = `/preview/${historyId}`;
     }
 });
 

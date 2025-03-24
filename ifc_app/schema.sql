@@ -15,6 +15,7 @@ CREATE TABLE conversion_history (
   filename TEXT NOT NULL,
   processed_date TIMESTAMP NOT NULL,
   element_count INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'processing' CHECK (status IN ('processing', 'completed', 'failed')),
   FOREIGN KEY (user_id) REFERENCES user (id)
 );
 

@@ -29,8 +29,8 @@ class RegistrationForm(FlaskForm):
 
 # ログインフォームの定義
 class LoginForm(FlaskForm):
-    # ログインに必要な最小限の情報を定義
-    username = StringField('ユーザー名', validators=[DataRequired()])
+    # ユーザー名をメールアドレスに変更
+    email = StringField('メールアドレス', validators=[DataRequired(), Email()])
     password = PasswordField('パスワード', validators=[DataRequired()])
     submit = SubmitField('ログイン')
 
@@ -77,12 +77,12 @@ def login():
 
         # ユーザー情報の取得
         user_data = db.execute(
-            'SELECT * FROM user WHERE username = ?', (form.username.data,)
+            'SELECT * FROM user WHERE email = ?', (form.email.data,)
         ).fetchone()
 
         # ユーザー名のチェック
         if user_data is None:
-            error = 'ユーザー名が正しくありません'
+            error = 'メールアドレスが正しくありません'
         # パスワードのチェック
         elif not check_password_hash(user_data['password'], form.password.data):
             error = 'パスワードが正しくありません'
