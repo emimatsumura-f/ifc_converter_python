@@ -1,3 +1,6 @@
+# このファイルは認証（ログインや登録）に関する機能を管理します
+
+# 必要なライブラリをインポートします
 import functools
 from flask import (
     Blueprint, flash, g, redirect, render_template, request, session, url_for
@@ -10,35 +13,47 @@ from wtforms.validators import DataRequired, Email, EqualTo
 from ifc_app.db import get_db
 from ifc_app.models import User
 
+# Blueprintを作成して、URLのプレフィックスを'/auth'に設定
+# これにより、すべての認証関連のURLは'/auth/...'となります
 bp = Blueprint('auth', __name__, url_prefix='/auth')
 
+# ユーザー登録フォームの定義
+# FlaskFormを継承して、登録に必要なフィールドを定義します
 class RegistrationForm(FlaskForm):
-    username = StringField('ユーザー名', validators=[DataRequired()])
-    email = StringField('メールアドレス', validators=[DataRequired(), Email()])
+    # 各フィールドにはバリデーション（入力チェック）が設定されています
+    username = StringField('ユーザー名', validators=[DataRequired()])  # 必須項目
+    email = StringField('メールアドレス', validators=[DataRequired(), Email()])  # メール形式チェック
     password = PasswordField('パスワード', validators=[DataRequired()])
-    password2 = PasswordField('パスワード（確認）', validators=[DataRequired(), EqualTo('password')])
+    password2 = PasswordField('パスワード（確認）', validators=[DataRequired(), EqualTo('password')])  # パスワード一致チェック
     submit = SubmitField('登録')
 
+# ログインフォームの定義
 class LoginForm(FlaskForm):
+    # ログインに必要な最小限の情報を定義
     username = StringField('ユーザー名', validators=[DataRequired()])
     password = PasswordField('パスワード', validators=[DataRequired()])
     submit = SubmitField('ログイン')
 
+# 登録ページのルート設定
 @bp.route('/register', methods=['GET', 'POST'])
 def register():
     form = RegistrationForm()
+    # フォームのバリデーションが成功した場合の処理
     if form.validate_on_submit():
-        db = get_db()
+        db = get_db()  # データベース接続を取得
         error = None
 
+        # ユーザー名の重複チェック
         if db.execute('SELECT id FROM user WHERE username = ?', 
             (form.username.data,)).fetchone() is not None:
             error = 'ユーザー名 {} は既に登録されています。'.format(form.username.data)
+        # メールアドレスの重複チェック
         elif db.execute('SELECT id FROM user WHERE email = ?',
             (form.email.data,)).fetchone() is not None:
             error = 'メールアドレス {} は既に登録されています。'.format(form.email.data)
 
         if error is None:
+            # ユーザー情報をデータベースに挿入
             db.execute(
                 'INSERT INTO user (username, email, password) VALUES (?, ?, ?)',
                 (form.username.data, form.email.data, generate_password_hash(form.password.data))
@@ -51,23 +66,29 @@ def register():
 
     return render_template('auth/register.html', form=form)
 
+# ログインページのルート設定
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
     form = LoginForm()
+    # フォームのバリデーションが成功した場合の処理
     if form.validate_on_submit():
-        db = get_db()
+        db = get_db()  # データベース接続を取得
         error = None
 
+        # ユーザー情報の取得
         user_data = db.execute(
             'SELECT * FROM user WHERE username = ?', (form.username.data,)
         ).fetchone()
 
+        # ユーザー名のチェック
         if user_data is None:
             error = 'ユーザー名が正しくありません'
+        # パスワードのチェック
         elif not check_password_hash(user_data['password'], form.password.data):
             error = 'パスワードが正しくありません'
 
         if error is None:
+            # ユーザーをログイン状態にする
             user = User(user_data['id'], user_data['username'])
             login_user(user)
             return redirect(url_for('index'))
@@ -76,6 +97,7 @@ def login():
 
     return render_template('auth/login.html', form=form)
 
+# ログアウトページのルート設定
 @bp.route('/logout')
 @login_required
 def logout():
