@@ -1,10 +1,56 @@
 import ifcopenshell
 import logging
 import os
+from . import db
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-def process_ifc_file(filepath):
+def get_cached_elements(conversion_id):
+    """キャッシュされた要素を取得"""
+    try:
+        database = db.get_db()
+        elements = database.execute(
+            'SELECT * FROM ifc_elements_cache WHERE conversion_id = ?',
+            (conversion_id,)
+        ).fetchall()
+        
+        if elements:
+            return [{
+                'type': element['element_type'],
+                'name': element['element_name'],
+                'description': element['element_description'],
+                'size': element['profile_size'],
+                'weight': element['weight'],
+                'length': element['length']
+            } for element in elements]
+        return None
+    except Exception as e:
+        logger.error(f"キャッシュの取得中にエラーが発生: {str(e)}")
+        return None
+
+def cache_elements(conversion_id, elements):
+    """要素をキャッシュに保存"""
+    try:
+        database = db.get_db()
+        for element in elements:
+            database.execute(
+                '''INSERT INTO ifc_elements_cache 
+                   (conversion_id, element_type, element_name, element_description, 
+                    profile_size, weight, length)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                (conversion_id, element['type'], element['name'], 
+                 element.get('description', '未定義'),
+                 element.get('size', '未定義'), 
+                 element.get('weight', '未定義'),
+                 element.get('length', '未定義'))
+            )
+        database.commit()
+    except Exception as e:
+        logger.error(f"キャッシュの保存中にエラーが発生: {str(e)}")
+        database.rollback()
+
+def process_ifc_file(filepath, conversion_id=None):
     """
     IFCファイルを処理して部材情報を抽出する
     """
@@ -12,6 +58,13 @@ def process_ifc_file(filepath):
         error_msg = f"IFCファイルが見つかりません: {filepath}"
         logger.error(error_msg)
         raise FileNotFoundError(error_msg)
+
+    # キャッシュが利用可能な場合はキャッシュから返す
+    if conversion_id:
+        cached_elements = get_cached_elements(conversion_id)
+        if cached_elements:
+            logger.info(f"キャッシュから要素を取得: conversion_id={conversion_id}")
+            return cached_elements
 
     try:
         logger.info(f"IFCファイルの処理を開始: {filepath}")
@@ -60,6 +113,12 @@ def process_ifc_file(filepath):
             logger.warning("解析可能な部材が見つかりませんでした")
             
         logger.info(f"IFCファイルの処理が完了しました。抽出された部材数: {len(elements)}")
+
+        if conversion_id and elements:
+            # 解析結果をキャッシュに保存
+            cache_elements(conversion_id, elements)
+            logger.info(f"要素をキャッシュに保存: conversion_id={conversion_id}")
+
         return elements
 
     except Exception as e:
@@ -141,7 +200,7 @@ def get_length(element):
                 if props.is_a("IfcElementQuantity"):
                     for quantity in props.Quantities:
                         if quantity.is_a("IfcQuantityLength"):
-                            return f"{int(quantity.LengthValue * 1000)}mm"  # メートルからミリメートルに変換
+                            return f"{int(quantity.LengthValue)}mm"  # HTMLでの表示用にmmを保持
 
         # プロパティセットから長さ情報を検索
         for rel in element.IsDefinedBy:
@@ -153,7 +212,7 @@ def get_length(element):
                             if hasattr(prop, "NominalValue"):
                                 value = prop.NominalValue.wrappedValue
                                 if isinstance(value, (int, float)):
-                                    return f"{int(value * 1000)}mm"  # メートルからミリメートルに変換
+                                    return f"{int(value)}mm"  # HTMLでの表示用にmmを保持
                                 return str(value)
 
         # 形状情報から長さを計算する試み
@@ -165,7 +224,7 @@ def get_length(element):
                         for item in rep.Items:
                             if item.is_a('IfcExtrudedAreaSolid'):
                                 depth = item.Depth
-                                return f"{int(depth * 1000)}mm"  # メートルからミリメートルに変換
+                                return f"{int(depth)}mm"  # HTMLでの表示用にmmを保持
 
         return "未定義"
     except Exception as e:

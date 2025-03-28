@@ -131,7 +131,7 @@ def upload_chunk(upload_id, chunk_number):
                 shutil.rmtree(temp_dir)
 
                 # IFCファイルの解析処理
-                elements = process_ifc_file(final_path)
+                elements = process_ifc_file(final_path, upload_id)
                 
                 # element_countとステータスを更新
                 db.execute(
@@ -191,7 +191,8 @@ def preview(upload_id):
     file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], upload['filename'])
     
     try:
-        elements = process_ifc_file(file_path)
+        # conversion_idを渡してキャッシュを活用
+        elements = process_ifc_file(file_path, upload_id)
         if not elements:
             logger.warning(f"解析可能な部材が見つかりませんでした。filename: {upload['filename']}")
             flash('IFCファイルから部材情報を抽出できませんでした。', 'warning')
@@ -238,7 +239,8 @@ def download_csv(upload_id):
     
     try:
         file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], upload['filename'])
-        elements = process_ifc_file(file_path)
+        # conversion_idを渡してキャッシュを活用
+        elements = process_ifc_file(file_path, upload_id)
         
         # CSVデータを生成
         output = io.StringIO()
@@ -246,9 +248,13 @@ def download_csv(upload_id):
         writer.writeheader()
         writer.writerows(elements)
         
+        # 現在の日時を取得してファイル名を生成
+        current_time = datetime.now().strftime('%Y%m%d%H%M')
+        filename = f'ifc_{current_time}_model.csv'
+        
         # CSVファイルをレスポンスとして返す
         response = make_response(output.getvalue())
-        response.headers["Content-Disposition"] = f"attachment; filename=ifc_elements_{upload_id}.csv"
+        response.headers["Content-Disposition"] = f"attachment; filename={filename}"
         response.headers["Content-type"] = "text/csv; charset=utf-8"
         return response
         
@@ -281,7 +287,9 @@ def delete_history(history_id):
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
 
-        # データベースから履歴を削除
+        # キャッシュデータを削除
+        db.execute('DELETE FROM ifc_elements_cache WHERE conversion_id = ?', (history_id,))
+        # 履歴を削除
         db.execute('DELETE FROM conversion_history WHERE id = ?', (history_id,))
         # file_uploadsテーブルからも削除
         db.execute('DELETE FROM file_uploads WHERE upload_id = ?', (history_id,))
@@ -293,5 +301,5 @@ def delete_history(history_id):
     except Exception as e:
         db.rollback()
         logger.error(f"履歴削除中にエラーが発生: {str(e)}")
-        flash('削除中にエラーが発生しました', 'error')
+        flash('削除中にエラーが発生しました。', 'error')
         return redirect(url_for('ifc.history'))

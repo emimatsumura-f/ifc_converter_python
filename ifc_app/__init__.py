@@ -23,12 +23,8 @@ def create_app(test_config=None):
         MAX_CONTENT_LENGTH=100 * 1024 * 1024,  # 最大100MB
         # タイムアウトとバッファサイズの設定を追加
         PERMANENT_SESSION_LIFETIME=1800,  # 30分
-        MAX_BUFFER_SIZE=100 * 1024 * 1024  # アップロード用バッファサイズ
+        WTF_CSRF_ENABLED=True  # CSRF保護を有効化
     )
-
-    # CSRF保護の設定
-    csrf = CSRFProtect()
-    csrf.init_app(app)
 
     # セッションの設定
     app.config['SESSION_COOKIE_SECURE'] = True
@@ -49,6 +45,10 @@ def create_app(test_config=None):
         os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     except OSError as e:
         print(f"Error creating directories: {str(e)}")
+
+    # CSRF保護の初期化
+    csrf = CSRFProtect()
+    csrf.init_app(app)
 
     # データベースの初期化
     from ifc_app import db
