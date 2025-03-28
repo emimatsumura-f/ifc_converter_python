@@ -1,5 +1,6 @@
 import ifcopenshell
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -7,13 +8,21 @@ def process_ifc_file(filepath):
     """
     IFCファイルを処理して部材情報を抽出する
     """
+    if not os.path.exists(filepath):
+        error_msg = f"IFCファイルが見つかりません: {filepath}"
+        logger.error(error_msg)
+        raise FileNotFoundError(error_msg)
+
     try:
+        logger.info(f"IFCファイルの処理を開始: {filepath}")
         ifc_file = ifcopenshell.open(filepath)
         elements = []
 
         # BeamとColumnの要素を取得
         beams = ifc_file.by_type('IfcBeam')
         columns = ifc_file.by_type('IfcColumn')
+
+        logger.info(f"検出された部材数: Beams={len(beams)}, Columns={len(columns)}")
 
         # Beamの情報を処理
         for beam in beams:
@@ -28,7 +37,7 @@ def process_ifc_file(filepath):
                 }
                 elements.append(properties)
             except Exception as e:
-                logger.warning(f"Beam {beam.id()} の処理中にエラーが発生: {str(e)}")
+                logger.warning(f"Beam {beam.id() if hasattr(beam, 'id') else 'unknown'} の処理中にエラーが発生: {str(e)}")
                 continue
 
         # Columnの情報を処理
@@ -44,14 +53,19 @@ def process_ifc_file(filepath):
                 }
                 elements.append(properties)
             except Exception as e:
-                logger.warning(f"Column {column.id()} の処理中にエラーが発生: {str(e)}")
+                logger.warning(f"Column {column.id() if hasattr(column, 'id') else 'unknown'} の処理中にエラーが発生: {str(e)}")
                 continue
 
+        if not elements:
+            logger.warning("解析可能な部材が見つかりませんでした")
+            
+        logger.info(f"IFCファイルの処理が完了しました。抽出された部材数: {len(elements)}")
         return elements
 
     except Exception as e:
-        logger.error(f"IFCファイルの処理中にエラーが発生: {str(e)}")
-        raise
+        error_msg = f"IFCファイルの処理中に重大なエラーが発生: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        raise RuntimeError(error_msg) from e
 
 def extract_profile_information(element):
     """部材のプロファイル情報を抽出"""

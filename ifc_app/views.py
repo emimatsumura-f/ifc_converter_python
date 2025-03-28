@@ -176,12 +176,15 @@ def upload_chunk(upload_id, chunk_number):
 @login_required
 def preview(upload_id):
     db = get_db()
+    logger.info(f"プレビューページにアクセスしました。upload_id: {upload_id}")
+    
     upload = db.execute(
         'SELECT * FROM conversion_history WHERE id = ? AND user_id = ?',
         (upload_id, current_user.id)
     ).fetchone()
     
     if upload is None:
+        logger.warning(f"変換履歴が見つかりません。upload_id: {upload_id}, user_id: {current_user.id}")
         flash('指定された変換履歴が見つかりません。', 'error')
         return redirect(url_for('ifc.history'))
 
@@ -189,12 +192,26 @@ def preview(upload_id):
     
     try:
         elements = process_ifc_file(file_path)
-    except Exception as e:
-        logger.error(f"プレビュー生成中にエラーが発生: {str(e)}")
+        if not elements:
+            logger.warning(f"解析可能な部材が見つかりませんでした。filename: {upload['filename']}")
+            flash('IFCファイルから部材情報を抽出できませんでした。', 'warning')
+            return render_template('preview.html', upload=upload, elements=[])
+            
+        logger.info(f"IFCファイルの解析が完了しました。filename: {upload['filename']}")
+        return render_template('preview.html', upload=upload, elements=elements)
+        
+    except FileNotFoundError as e:
+        logger.error(f"IFCファイルが見つかりません: {str(e)}")
+        flash('IFCファイルが見つかりません。', 'error')
+        return redirect(url_for('ifc.history'))
+    except RuntimeError as e:
+        logger.error(f"IFCファイルの解析中にエラーが発生: {str(e)}")
         flash('IFCファイルの解析中にエラーが発生しました。', 'error')
         return redirect(url_for('ifc.history'))
-    
-    return render_template('preview.html', upload=upload, elements=elements)
+    except Exception as e:
+        logger.error(f"予期せぬエラーが発生: {str(e)}", exc_info=True)
+        flash('予期せぬエラーが発生しました。', 'error')
+        return redirect(url_for('ifc.history'))
 
 @bp.route('/history')
 @login_required
@@ -250,35 +267,31 @@ def delete_history(history_id):
     ).fetchone()
 
     if history is None:
-        return jsonify({'success': False, 'error': '履歴が見つかりません'}), 404
-
-    try:
-        db.execute('DELETE FROM conversion_history WHERE id = ?', (history_id,))
-        db.commit()
-        return jsonify({'success': True})
-    except Exception as e:
-        db.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@bp.route('/preview/<int:history_id>')
-@login_required
-def preview_history(history_id):
-    db = get_db()
-    history = db.execute(
-        'SELECT * FROM conversion_history WHERE id = ? AND user_id = ?',
-        (history_id, current_user.id)
-    ).fetchone()
-
-    if history is None:
-        flash('指定された履歴が見つかりません')
+        flash('履歴が見つかりません', 'error')
         return redirect(url_for('ifc.history'))
 
-    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], history['filename'])
-    
     try:
-        elements = process_ifc_file(file_path)
-        return render_template('preview.html', history=history, elements=elements)
+        # ファイルを削除
+        file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], history['filename'])
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+        # 一時ファイルディレクトリも削除（もし存在していれば）
+        temp_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], f'temp_{history_id}')
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+
+        # データベースから履歴を削除
+        db.execute('DELETE FROM conversion_history WHERE id = ?', (history_id,))
+        # file_uploadsテーブルからも削除
+        db.execute('DELETE FROM file_uploads WHERE upload_id = ?', (history_id,))
+        db.commit()
+        
+        flash('履歴を削除しました', 'success')
+        return redirect(url_for('ifc.history'))
+
     except Exception as e:
-        logger.error(f"プレビュー生成中にエラーが発生: {str(e)}")
-        flash('IFCファイルの解析中にエラーが発生しました。', 'error')
+        db.rollback()
+        logger.error(f"履歴削除中にエラーが発生: {str(e)}")
+        flash('削除中にエラーが発生しました', 'error')
         return redirect(url_for('ifc.history'))
