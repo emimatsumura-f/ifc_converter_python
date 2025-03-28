@@ -9,7 +9,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from flask_login import login_user, logout_user, login_required
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SubmitField
-from wtforms.validators import DataRequired, Email, EqualTo
+from wtforms.validators import DataRequired, Email, EqualTo, Length, Regexp
 from ifc_app.db import get_db
 from ifc_app.models import User
 
@@ -23,8 +23,12 @@ class RegistrationForm(FlaskForm):
     # 各フィールドにはバリデーション（入力チェック）が設定されています
     username = StringField('ユーザー名', validators=[DataRequired()])  # 必須項目
     email = StringField('メールアドレス', validators=[DataRequired(), Email()])  # メール形式チェック
-    password = PasswordField('パスワード', validators=[DataRequired()])
-    password2 = PasswordField('パスワード（確認）', validators=[DataRequired(), EqualTo('password')])  # パスワード一致チェック
+    password = PasswordField('パスワード', validators=[
+        DataRequired(),
+        Length(min=6, max=6, message='パスワードは6文字で入力してください'),
+        Regexp('^[0-9]*$', message='パスワードは数字のみで入力してください')
+    ])
+    password2 = PasswordField('パスワード（確認）', validators=[DataRequired(), EqualTo('password', message='パスワードが一致しません')])  # パスワード一致チェック
     submit = SubmitField('登録')
 
 # ログインフォームの定義

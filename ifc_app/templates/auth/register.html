@@ -27,6 +27,7 @@
                     <div class="mb-3">
                         {{ form.password.label(class="form-label") }}
                         {{ form.password(class="form-control") }}
+                        <small class="text-muted">パスワードは数字6文字以内で設定してください</small>
                         {% for error in form.password.errors %}
                             <div class="alert alert-danger">{{ error }}</div>
                         {% endfor %}
